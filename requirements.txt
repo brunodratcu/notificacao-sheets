@@ -1,0 +1,5 @@
+flask
+apscheduler
+requests
+google-auth
+google-api-python-client
