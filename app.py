@@ -10,12 +10,12 @@ import json
 app = Flask(__name__)
 
 # ── Configuração via variáveis de ambiente (definidas no Railway) ────────────
-EVOLUTION_API_URL    = os.environ.get("EVOLUTION_API_URL")      # URL da sua instância
-EVOLUTION_API_KEY    = os.environ.get("EVOLUTION_API_KEY")      # Global API key
-EVOLUTION_INSTANCE   = os.environ.get("EVOLUTION_INSTANCE")     # Nome da instância
-DESTINO_WHATSAPP     = os.environ.get("DESTINO_WHATSAPP")       # Ex: 5511999990000
-SPREADSHEET_ID       = os.environ.get("SPREADSHEET_ID")         # ID da planilha
-GOOGLE_CREDS_JSON    = os.environ.get("GOOGLE_CREDS_JSON")      # JSON da service account
+ZAPI_INSTANCE_ID  = os.environ.get("ZAPI_INSTANCE_ID")   # ID da instância Z-API
+ZAPI_TOKEN        = os.environ.get("ZAPI_TOKEN")          # Token da instância Z-API
+ZAPI_CLIENT_TOKEN = os.environ.get("ZAPI_CLIENT_TOKEN")  # Client Token (Security Token)
+DESTINO_WHATSAPP  = os.environ.get("DESTINO_WHATSAPP")   # Ex: 5511999990000
+SPREADSHEET_ID    = os.environ.get("SPREADSHEET_ID")     # ID da Google Sheets
+GOOGLE_CREDS_JSON = os.environ.get("GOOGLE_CREDS_JSON")  # JSON da service account
 
 SHEET_RANGE = "Painel de Guias!A4:I100"
 
@@ -40,7 +40,6 @@ def update_status(row_index, new_status):
         scopes=["https://www.googleapis.com/auth/spreadsheets"]
     )
     service = build("sheets", "v4", credentials=creds)
-    # Coluna G = índice 7 (Status), linha = row_index + 4 (offset do cabeçalho)
     cell = f"Painel de Guias!G{row_index + 4}"
     service.spreadsheets().values().update(
         spreadsheetId=SPREADSHEET_ID,
@@ -49,19 +48,19 @@ def update_status(row_index, new_status):
         body={"values": [[new_status]]}
     ).execute()
 
-# ── WhatsApp via Evolution API ───────────────────────────────────────────────
+# ── WhatsApp via Z-API ────────────────────────────────────────────────────────
 def enviar_whatsapp(mensagem):
-    url = f"{EVOLUTION_API_URL}/message/sendText/{EVOLUTION_INSTANCE}"
+    url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
     headers = {
         "Content-Type": "application/json",
-        "apikey": EVOLUTION_API_KEY
+        "Client-Token": ZAPI_CLIENT_TOKEN
     }
     payload = {
-        "number": DESTINO_WHATSAPP,
-        "text": mensagem
+        "phone": DESTINO_WHATSAPP,
+        "message": mensagem
     }
     response = requests.post(url, json=payload, headers=headers)
-    print(f"WhatsApp status: {response.status_code} — {response.text}")
+    print(f"Z-API status: {response.status_code} — {response.text}")
 
 # ── Lógica principal ─────────────────────────────────────────────────────────
 def verificar_vencimentos():
@@ -69,20 +68,20 @@ def verificar_vencimentos():
     rows = get_sheet_data()
     hoje = date.today()
 
-    hoje_lista  = []
-    tres_lista  = []
-    atrasadas   = []
+    hoje_lista = []
+    tres_lista = []
+    atrasadas  = []
 
     for i, row in enumerate(rows):
-        if len(row) < 7:
+        if len(row) < 3:
             continue
 
+        imovel     = row[1] if len(row) > 1 else ""
         tipo       = row[2] if len(row) > 2 else ""
         venc_str   = row[3] if len(row) > 3 else ""
         valor      = row[4] if len(row) > 4 else ""
         onde_pagar = row[5] if len(row) > 5 else ""
         status     = row[6] if len(row) > 6 else ""
-        imovel     = row[1] if len(row) > 1 else ""
 
         if not tipo or not venc_str:
             continue
@@ -90,7 +89,6 @@ def verificar_vencimentos():
             continue
 
         try:
-            # Aceita formatos DD/MM/YYYY ou YYYY-MM-DD
             if "/" in venc_str:
                 data_venc = datetime.strptime(venc_str, "%d/%m/%Y").date()
             else:
@@ -98,10 +96,15 @@ def verificar_vencimentos():
         except ValueError:
             continue
 
-        diff = (data_venc - hoje).days
-        valor_str = f"R$ {float(valor.replace(',', '.')):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if valor else "valor a preencher"
+        diff      = (data_venc - hoje).days
         data_str  = data_venc.strftime("%d/%m/%Y")
         onde      = onde_pagar or "ver planilha"
+
+        try:
+            valor_num = float(str(valor).replace("R$", "").replace(".", "").replace(",", ".").strip())
+            valor_str = f"R$ {valor_num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except (ValueError, AttributeError):
+            valor_str = "valor a preencher"
 
         if diff < 0:
             atrasadas.append(f"🔴 *ATRASADO* — {tipo} ({imovel})\n   📅 Venceu em {data_str} | {valor_str}\n   📍 {onde}")
