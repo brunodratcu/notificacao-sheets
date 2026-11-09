@@ -10,9 +10,7 @@ import json
 app = Flask(__name__)
 
 # ── Configuração via variáveis de ambiente (definidas no Railway) ────────────
-ZAPI_INSTANCE_ID  = os.environ.get("ZAPI_INSTANCE_ID")   # ID da instância Z-API
-ZAPI_TOKEN        = os.environ.get("ZAPI_TOKEN")          # Token da instância Z-API
-ZAPI_CLIENT_TOKEN = os.environ.get("ZAPI_CLIENT_TOKEN")  # Client Token (Security Token)
+WHAPI_TOKEN       = os.environ.get("WHAPI_TOKEN")        # Token do canal Whapi.Cloud
 DESTINO_WHATSAPP  = os.environ.get("DESTINO_WHATSAPP")   # Ex: 5511999990000
 SPREADSHEET_ID    = os.environ.get("SPREADSHEET_ID")     # ID da Google Sheets
 GOOGLE_CREDS_JSON = os.environ.get("GOOGLE_CREDS_JSON")  # JSON da service account
@@ -48,19 +46,20 @@ def update_status(row_index, new_status):
         body={"values": [[new_status]]}
     ).execute()
 
-# ── WhatsApp via Z-API ────────────────────────────────────────────────────────
+# ── WhatsApp via Whapi.Cloud ──────────────────────────────────────────────────
 def enviar_whatsapp(mensagem):
-    url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
+    url = "https://gate.whapi.cloud/messages/text"
     headers = {
-        "Content-Type": "application/json",
-        "Client-Token": ZAPI_CLIENT_TOKEN
+        "accept": "application/json",
+        "content-type": "application/json",
+        "authorization": f"Bearer {WHAPI_TOKEN}"
     }
     payload = {
-        "phone": DESTINO_WHATSAPP,
-        "message": mensagem
+        "to": DESTINO_WHATSAPP,
+        "body": mensagem
     }
     response = requests.post(url, json=payload, headers=headers)
-    print(f"Z-API status: {response.status_code} — {response.text}")
+    print(f"Whapi status: {response.status_code} — {response.text}")
 
 # ── Lógica principal ─────────────────────────────────────────────────────────
 def verificar_vencimentos():
